@@ -103,6 +103,8 @@ memmove(void *vdst, const void *vsrc, int n)
 
   dst = vdst;
   src = vsrc;
+  //判断src与dst的内存位置，是担心dst的前半部分覆盖掉。比如dst=src+4的位置，n=8，
+  //那么在拷贝的时候，src+4 src+5 src+6 ... 等位置已经被覆盖了
   if (src > dst) {
     while(n-- > 0)
       *dst++ = *src++;
