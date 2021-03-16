@@ -12,7 +12,7 @@ main(int argc, char *argv[])
   char buf[256] = {0};
 //   printf("argc %d\n", argc);
   for(int i=1; i<argc; ++i){
-      if(strcmp(argv[i], "-n") == 0){
+      if(strcmp(argv[i], "-n") == 0 && i==1){
           ++i;
       }else{
           args[ini_arg_num++] = argv[i];
