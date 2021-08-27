@@ -440,3 +440,39 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+
+
+void
+vmprint(pagetable_t pagetable){
+  printf("page table %p\n", pagetable);
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte_2level = pagetable[i];
+    if(pte_2level & PTE_V){
+      // this PTE points to a lower-level page table.
+      pagetable_t pte_1level_addr = (pagetable_t)PTE2PA(pte_2level);
+      printf("..%d: pte %p pa %p\n", i, pte_2level, pte_1level_addr);
+      for(int j = 0; j < 512; j++){
+        pte_t pte_1level = pte_1level_addr[j];
+        if(pte_1level & PTE_V){
+          // this PTE points to a lower-level page table.
+          pagetable_t pte_0level_addr = (pagetable_t)PTE2PA(pte_1level);
+          printf(".. ..%d: pte %p pa %p\n", j, pte_1level, pte_0level_addr);
+
+          for(int k = 0; k < 512; k++){
+              pte_t pte_0level = pte_0level_addr[k];
+              pagetable_t pa = (pagetable_t)PTE2PA(pte_0level);
+              if(pte_0level & PTE_V){
+                printf(".. .. ..%d: pte %p pa %p\n", k, pte_0level, pa);
+              }
+              
+          }
+        }
+      }
+      
+      
+    }
+  }
+  return;
+}
