@@ -116,6 +116,14 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+//  printf("yyyexec %s user_pt and kernel_pt\n", path);
+//  vmprint(p->pagetable);
+//  vmprint(p->kernel_pagetable);
+  u2kvmcopy(p->pagetable, p->kernel_pagetable, 0, p->sz);
+//  printf("yyyexec after u2kvmcopy %s user_pt and kernel_pt\n", path);
+//  vmprint(p->pagetable);
+//  vmprint(p->kernel_pagetable);
+
   if(p->pid==1) vmprint(p->pagetable);
   
   return argc; // this ends up in a0, the first argument to main(argc, argv)

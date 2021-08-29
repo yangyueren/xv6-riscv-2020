@@ -97,6 +97,8 @@ kvminit()
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+//  printf("kvminit\n");
+//  vmprint(kernel_pagetable);
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -158,6 +160,26 @@ walkaddr(pagetable_t pagetable, uint64 va)
   if((*pte & PTE_V) == 0)
     return 0;
   if((*pte & PTE_U) == 0)
+    return 0;
+  pa = PTE2PA(*pte);
+  return pa;
+}
+
+// Look up a virtual address, return the physical address,
+// or 0 if not mapped.
+uint64
+walkaddr2(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+
+  if(va >= MAXVA)
+    return 0;
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
     return 0;
   pa = PTE2PA(*pte);
   return pa;
@@ -345,18 +367,11 @@ freewalk(pagetable_t pagetable)
 // Free user memory pages,
 // then free page-table pages.
 void
-uvmfree2(pagetable_t pagetable)
-{
-  freewalk(pagetable);
-}
-
-// Free user memory pages,
-// then free page-table pages.
-void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
+
   freewalk(pagetable);
 }
 
@@ -434,13 +449,14 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   return 0;
 }
 
+
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-//  return copyin_new(pagetable, dst, srcva, len);
+  return copyin_new(pagetable, dst, srcva, len);
   uint64 n, va0, pa0;
 
   while(len > 0){
@@ -467,7 +483,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-//  return copyinstr_new(pagetable, dst, srcva, max);
+  return copyinstr_new(pagetable, dst, srcva, max);
   uint64 n, va0, pa0;
   int got_null = 0;
 
@@ -509,6 +525,35 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 void
 vmprint(pagetable_t pagetable){
   printf("page table %p\n", pagetable);
+  //0x2000000
+  //  10 000 <0 0000 0000>最低9位 <0000 0000 0000>后12位不需要
+
+//  for(int i = 0; i < 1; i++){
+//    pte_t pte_2level = pagetable[i];
+//    if(pte_2level & PTE_V){
+//      // this PTE points to a lower-level page table.
+//      pagetable_t pte_1level_addr = (pagetable_t)PTE2PA(pte_2level);
+//      printf("..%d: pte %p pa %p\n", i, pte_2level, pte_1level_addr);
+//      for(int j = 0; j < 16; j++){
+//        pte_t pte_1level = pte_1level_addr[j];
+//        if(pte_1level & PTE_V){
+//          // this PTE points to a lower-level page table.
+//          pagetable_t pte_0level_addr = (pagetable_t)PTE2PA(pte_1level);
+//          printf(".. ..%d: pte %p pa %p\n", j, pte_1level, pte_0level_addr);
+//
+//          for(int k = 0; k < 512; k++){
+//            pte_t pte_0level = pte_0level_addr[k];
+//            pagetable_t pa = (pagetable_t)PTE2PA(pte_0level);
+//            if(pte_0level & PTE_V){
+//              printf(".. .. ..%d: pte %p pa %p\n", k, pte_0level, pa);
+//            }
+//          }
+//        }
+//      }
+//    }
+//  }
+
+  // below is right
   // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
     pte_t pte_2level = pagetable[i];
@@ -535,4 +580,45 @@ vmprint(pagetable_t pagetable){
     }
   }
   return;
+}
+
+void
+u2kvmcopy(pagetable_t user_pagetable, pagetable_t kernel_pagetable, uint64 oldsz, uint64 newsz)
+{
+  pte_t *pte_from, *pte_to;
+  uint64 a, pa;
+  uint flags;
+
+  if (newsz < oldsz)
+    return;
+
+  oldsz = PGROUNDUP(oldsz);
+  for (a = oldsz; a < newsz; a += PGSIZE)
+  {
+    if ((pte_from = walk(user_pagetable, a, 0)) == 0)
+      panic("u2kvmcopy: pte should exist");
+    if ((pte_to = walk(kernel_pagetable, a, 1)) == 0)
+      panic("u2kvmcopy: walk fails");
+    pa = PTE2PA(*pte_from);
+    // 清除PTE_U的标记位
+    flags = (PTE_FLAGS(*pte_from) & (~PTE_U));
+    *pte_to = PA2PTE(pa) | flags;
+  }
+//  pte_t *u_pte;
+//  pte_t *k_pte;
+//  uint64 va;
+//  if(oldsz >= newsz){
+//    return;
+//  }
+//  if(newsz >= PLIC)
+//    panic("u2kvmcopy: newsz too large");
+//
+//
+//  for (va = oldsz; va < newsz ; va += PGSIZE) {
+//    u_pte = walk(user_pagetable, va, 0);
+//    k_pte = walk(kernel_pagetable, va, 1);
+//    *k_pte = *u_pte;
+//    *k_pte &= ~(PTE_U|PTE_W|PTE_X);
+//  }
+
 }

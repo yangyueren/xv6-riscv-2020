@@ -117,15 +117,18 @@ found:
 
 
   p->kernel_pagetable = kvminit_userproc_kernel_pt();
+
   char *pa = kalloc();
   if(pa == 0)
     panic("kalloc");
-
   uint64 va = KSTACK((int) (p - proc));
   if(mappages(p->kernel_pagetable, va, PGSIZE, (uint64)pa, PTE_R | PTE_W) != 0){
     panic("mappages");
   }
   p->kstack = va;
+//  printf("kstack %p\n", va);
+//  pte_t* pte = (pte_t*)walkaddr(p->kernel_pagetable, p->kstack);
+//  printf("pte %p\n", pte);
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -157,8 +160,22 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+
+  if (p->kstack)
+  {
+    uint64 pa_stack = walkaddr2(p->kernel_pagetable, p->kstack);
+    if (pa_stack == 0)
+      panic("freeproc: kstack");
+    kfree((void*)pa_stack);
+  }
+  p->kstack = 0;
   if(p->kernel_pagetable)
-    proc_free_kernel_pagetable(p->kstack, p->kernel_pagetable, p->sz);
+  {
+//    printf("yyy begin proc free k\n");
+    proc_free_kernel_pagetable(p->kernel_pagetable);
+//    printf("yyy end proc free k\n");
+  }
+
   p->kernel_pagetable = 0;
 
   p->sz = 0;
@@ -215,24 +232,30 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 }
 
 void
-proc_free_kernel_pagetable(uint64 kstack, pagetable_t pagetable, uint64 sz){
-//  printf("proc free kernel pagetable begin\n");
-  uvmunmap(pagetable, UART0, 1, 0);
-  uvmunmap(pagetable, VIRTIO0, 1, 0);
-  uvmunmap(pagetable, CLINT, 1, 0);
-  uvmunmap(pagetable, PLIC, 0x400000/PGSIZE, 0);
-//  printf("proc free kernel pagetable plic\n");
-  uvmunmap(pagetable, KERNBASE, ((uint64)etext-KERNBASE)/PGSIZE, 0);
-//  printf("proc free kernel pagetable before etext\n");
-  uvmunmap(pagetable, (uint64)etext, (PHYSTOP-(uint64)etext)/PGSIZE, 0);
-//  printf("proc free kernel pagetable before trapframe\n");
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-
-//  printf("proc free kernel pagetable before kstack\n");
-  uvmunmap(pagetable, kstack, 1, 1);
-
-//  printf("proc free kernel pagetable");
-  uvmfree2(pagetable);
+proc_free_kernel_pagetable(pagetable_t pagetable){
+  if ((uint64)pagetable >= PHYSTOP){
+    panic("yyy > phystop");
+  }
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V)){
+      pagetable[i] = 0;
+      if ((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+      {
+        uint64 child = PTE2PA(pte);
+        proc_free_kernel_pagetable((pagetable_t)child);
+      }
+    } else if(pte & PTE_V){
+      panic("proc free kpt: leaf");
+    }
+  }
+  if (((uint64)pagetable % PGSIZE) != 0){
+    printf("yyy kfree wrong %d\n", (uint64)pagetable);
+  }
+  if ((uint64)(void*)pagetable >= PHYSTOP){
+    panic("yyy > phystop");
+  }
+  kfree((void*)pagetable);
 }
 
 // a user program that calls exec("/init")
@@ -260,6 +283,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  u2kvmcopy(p->pagetable, p->kernel_pagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -282,13 +306,19 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+
   if(n > 0){
+    if (PGROUNDUP(sz + n) >= PLIC){
+        return -1;
+    }
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    u2kvmcopy(p->pagetable, p->kernel_pagetable, sz - n, sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
+
   p->sz = sz;
   return 0;
 }
@@ -315,6 +345,8 @@ fork(void)
   }
   np->sz = p->sz;
 
+
+
   np->parent = p;
 
   // copy saved user registers.
@@ -334,6 +366,7 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+  u2kvmcopy(np->pagetable, np->kernel_pagetable, 0, np->sz);
 
   release(&np->lock);
 
