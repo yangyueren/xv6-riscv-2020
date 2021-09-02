@@ -132,3 +132,65 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+//0x0000000080002db8
+//0x0000000080002c1c
+//0x0000000080002906
+//0x0000000000000012
+
+
+/*
+ *
+ * -----------  tramploine
+ * guard page
+ * -----------
+ * use here as kstack1
+ * ----------- kstack1
+ * guard page
+ * -----------
+ * kstack2
+ * -----------kstack2
+ *
+ * -----------
+ *
+ * -----------
+ *
+ *
+ * 在PGROUNDUP(fp)放的是从user space进入kernel space的返回地址和fp
+    ra  0x0000000080002dcc
+    fp  0x0000003fffff9fc0
+    ra  0x0000000080002c30
+    fp  0x0000003fffff9fe0
+    ra  0x000000008000291a
+    fp  0x0000003fffffa000
+    ra  0x0000000000000012    ->    user space return address
+    fp  0x0000000000002fe0
+
+ *
+ *
+ *
+ *
+ */
+
+
+
+
+void
+backtrace(void)
+{
+  uint64 fp = r_fp();
+//  printf("kstack %p\n", (void*)myproc()->kstack);
+//  printf("fp %p\n", (void*)fp);
+  uint64 lo = PGROUNDDOWN(fp);
+  uint64 hi = PGROUNDUP(fp);
+//  printf("fp lo %p, hi %p\n", (void*)lo, (void *)hi);
+//  printf("kstack lo %p, hi %p\n", (void*)PGROUNDDOWN(myproc()->kstack), (void *)(PGROUNDUP(myproc()->kstack)));
+  printf("backtrace:\n");
+  while (fp >= lo && fp < hi){
+      printf("%p\n", *(uint64*)(fp-8));
+      fp = *((uint64*)(void*)(fp-16));
+
+//      printf("fp %p\n", (void*)fp);
+  }
+  return;
+}

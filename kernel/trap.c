@@ -16,6 +16,48 @@ void kernelvec();
 
 extern int devintr();
 
+
+void copy_trapframe(struct trapframe* tf_from, struct trapframe* tf_to)
+{
+  tf_to->kernel_satp = tf_from->kernel_satp;
+  tf_to->kernel_sp = tf_from->kernel_sp;
+  tf_to->kernel_trap = tf_from->kernel_trap;
+  tf_to->epc = tf_from->epc;
+  tf_to->kernel_hartid = tf_from->kernel_hartid;
+  tf_to->ra = tf_from->ra;
+  tf_to->sp = tf_from->sp;
+  tf_to->gp = tf_from->gp;
+  tf_to->tp = tf_from->tp;
+  tf_to->t0 = tf_from->t0;
+  tf_to->t1 = tf_from->t1;
+  tf_to->t2 = tf_from->t2;
+  tf_to->s0 = tf_from->s0;
+  tf_to->s1 = tf_from->s1;
+  tf_to->a0 = tf_from->a0;
+  tf_to->a1 = tf_from->a1;
+  tf_to->a2 = tf_from->a2;
+  tf_to->a3 = tf_from->a3;
+  tf_to->a4 = tf_from->a4;
+  tf_to->a5 = tf_from->a5;
+  tf_to->a6 = tf_from->a6;
+  tf_to->a7 = tf_from->a7;
+  tf_to->s2 = tf_from->s2;
+  tf_to->s3 = tf_from->s3;
+  tf_to->s4 = tf_from->s4;
+  tf_to->s5 = tf_from->s5;
+  tf_to->s6 = tf_from->s6;
+  tf_to->s7 = tf_from->s7;
+  tf_to->s8 = tf_from->s8;
+  tf_to->s9 = tf_from->s9;
+  tf_to->s10 = tf_from->s10;
+  tf_to->s11 = tf_from->s11;
+  tf_to->t3 = tf_from->t3;
+  tf_to->t4 = tf_from->t4;
+  tf_to->t5 = tf_from->t5;
+  tf_to->t6 = tf_from->t6;
+  return;
+}
+
 void
 trapinit(void)
 {
@@ -66,7 +108,7 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    // ok
+    // OK
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -77,8 +119,15 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    p->ticks = p->ticks + 1;
+    if(p->ticks == p->interval){
+      copy_trapframe(p->trapframe, p->trapframe_alarm);
+      p->trapframe->epc = (uint64)p->handler;
+    }
     yield();
+  }
+
 
   usertrapret();
 }

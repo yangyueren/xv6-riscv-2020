@@ -1,0 +1,21 @@
+1.
+a0 - a7 contain arguments to functions
+a2 holds 13 in main's call to printf
+a0放着 "%d %d\n" 这个字符串的地址
+
+2.Where is the call to function f in the assembly code for main? Where is the call to g? (Hint: the compiler may inline functions.)
+编译器优化，无函数调用
+
+3.At what address is the function printf located?
+628
+
+4.What value is in the register ra just after the jalr to printf in main?
+
+0x38
+
+unsigned int i = 0x00646c72;
+printf("H%x Wo%s", 57616, &i);
+
+>>> hex(57616)
+'0xe110'
+He110, World

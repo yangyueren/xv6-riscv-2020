@@ -103,4 +103,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int ticks;               // alarm interval
+  int interval;               // alarm interval
+  void (*handler)();               // handler function to be called by alarm interval
+  struct trapframe *trapframe_alarm; // data page for trampoline.S to save trapframe before call handler
+                                      // note: alloc memory and free memory for it.
+
 };

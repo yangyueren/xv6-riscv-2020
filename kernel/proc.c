@@ -21,6 +21,7 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -112,6 +113,10 @@ found:
     release(&p->lock);
     return 0;
   }
+  if((p->trapframe_alarm = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -139,6 +144,11 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  if(p->trapframe_alarm)
+    kfree((void*)p->trapframe_alarm);
+  p->trapframe_alarm = 0;
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
