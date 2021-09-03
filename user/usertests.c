@@ -22,6 +22,9 @@
 char buf[BUFSZ];
 char name[3];
 
+
+
+
 // what if you pass ridiculous pointers to system calls
 // that read user memory with copyin?
 void
@@ -210,6 +213,7 @@ copyinstr3(char *s)
   int ret = unlink(b);
   if(ret != -1){
     printf("unlink(%s) returned %d, not -1\n", b, ret);
+
     exit(1);
   }
 
