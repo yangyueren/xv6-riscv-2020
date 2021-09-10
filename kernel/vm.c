@@ -311,7 +311,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+//  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -320,18 +320,34 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+//    if((mem = kalloc()) == 0)
+//      goto err;
+//    memmove(mem, (char*)pa, PGSIZE);
+//    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+//      kfree(mem);
+//      goto err;
+    //yyy
+    //modify flags to read-only and RSW bits
+    if (flags & PTE_W){
+      flags = (flags & (~PTE_W)) | PTE_COW;
+      *pte = PA2PTE(pa) | flags;
+    }
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+
+    increment_pa_ref_count(pa);
   }
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  for(int j = 0; j < i; j += PGSIZE){
+    decrement_pa_ref_count_using_va(new, j);
+  }
+  uvmunmap(new, 0, i / PGSIZE, 0);
+
   return -1;
 }
 
@@ -348,6 +364,41 @@ uvmclear(pagetable_t pagetable, uint64 va)
   *pte &= ~PTE_U;
 }
 
+
+
+// cow page
+int cow_page(pagetable_t pagetable, uint64 va, int is_trap){
+//  printf("cow page\n");
+  if (va % PGSIZE != 0) panic("cow page");
+  if(va > MAXVA) return -1;
+  pte_t* pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return -1;
+//    panic("cow_page");
+
+  if(*pte & PTE_COW){
+    uint64 old_pa=PTE2PA(*pte);
+    uint64 flag=PTE_FLAGS(*pte)&(~PTE_COW);//清空PTE_C
+    //encounter a COW page(write to a page with PTE_W clear
+    char *new_pa=kalloc();//new_pa的ref cnt=1
+
+    if(new_pa==0){
+      return -1;
+    }
+    memmove(new_pa,(char *)old_pa,PGSIZE);
+    uvmunmap(pagetable,va,1,1);//uvmunmap的alloc参数设置为1 会对old_pa进行kfree old_pa的ref cnt--
+
+    if(mappages(pagetable,va,PGSIZE,(uint64)new_pa,flag|PTE_W)<0){
+      uvmunmap(pagetable,va,1,1);
+      return -1;
+    }
+
+  } else if (is_trap){
+    return -1;
+  }
+  return 0;
+}
+
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
@@ -358,6 +409,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+//    printf("copyout cow_page\n");
+    if(cow_page(pagetable,va0,0)!=0)
+    {
+      return -1;
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;

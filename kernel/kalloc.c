@@ -23,11 +23,69 @@ struct {
   struct run *freelist;
 } kmem;
 
+
+// yyy
+
+#define OFFSET_UNIT PGSIZE
+
+uint8 reference_counts[(PHYSTOP-KERNBASE)/PGSIZE]; // for pa page reference count.
+
+
+uint8 get_pa_ref_count(uint64 pa){
+  if(pa>=(uint64)end && pa<=PHYSTOP){
+    uint64 offset = pa - (uint64)end;
+    int index = offset / OFFSET_UNIT;
+    return reference_counts[index];
+  } else{
+    return 0;
+  }
+
+}
+
+void init_pa_ref_count(uint64 pa){
+  if(pa>=(uint64)end && pa<=PHYSTOP) {
+    uint64 offset = pa - (uint64)end;
+    int index = offset / OFFSET_UNIT;
+    reference_counts[index] = 1;
+  }
+}
+
+void increment_pa_ref_count_using_va(pagetable_t pagetable, uint64 va){
+  uint64 pa = walkaddr(pagetable, va);
+  increment_pa_ref_count(pa);
+}
+void increment_pa_ref_count(uint64 pa){
+  if(pa < (uint64)end || pa > PHYSTOP) return;
+
+  uint64 offset = pa - (uint64)end;
+  int index = offset / OFFSET_UNIT;
+  reference_counts[index] += 1;
+}
+
+void decrement_pa_ref_count_using_va(pagetable_t pagetable, uint64 va){
+  uint64 pa = walkaddr(pagetable, va);
+  decrement_pa_ref_count(pa);
+}
+void decrement_pa_ref_count(uint64 pa){
+  if(pa < (uint64)end || pa > PHYSTOP) return;
+
+  uint64 offset = pa - (uint64)end;
+  uint32 index = offset / OFFSET_UNIT;
+  if (reference_counts[index] > 0){
+    reference_counts[index] -= 1;
+    // yyy auto kfree page which ref count is 0.
+//    if (reference_counts[index] == 0){
+//      kfree((void*)pa);
+//    }
+  }
+}
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
+
 }
 
 void
@@ -51,6 +109,12 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  //yyy???????????
+  decrement_pa_ref_count((uint64)pa);
+  uint8 ref_count = get_pa_ref_count((uint64)pa);
+  if(ref_count > 0){
+    return;
+  }
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -78,5 +142,9 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+    //yyy
+  if(r)
+    init_pa_ref_count((uint64)r);
+
   return (void*)r;
 }

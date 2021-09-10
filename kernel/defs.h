@@ -60,6 +60,12 @@ void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
 
 // kalloc.c
+uint8           get_pa_ref_count(uint64 pa);
+void            init_pa_ref_count(uint64 pa);
+void            increment_pa_ref_count(uint64 pa);
+void            increment_pa_ref_count_using_va(pagetable_t pagetable, uint64 va);
+void            decrement_pa_ref_count(uint64 pa);
+void            decrement_pa_ref_count_using_va(pagetable_t pagetable, uint64 va);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
@@ -167,10 +173,12 @@ int             uvmcopy(pagetable_t, pagetable_t, uint64);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
+pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
 uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             cow_page(pagetable_t pagetable, uint64 va, int is_trap);
 
 // plic.c
 void            plicinit(void);

@@ -262,17 +262,22 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
+
+//  printf("yyy befor allocproc\n");
+
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
 
   // Copy user memory from parent to child.
+//  printf("yyy proc fork begin\n");
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+//  printf("yyy proc fork end\n");
   np->sz = p->sz;
 
   np->parent = p;
@@ -564,7 +569,7 @@ sleep(void *chan, struct spinlock *lk)
   // (wakeup locks p->lock),
   // so it's okay to release lk.
   if(lk != &p->lock){  //DOC: sleeplock0
-    acquire(&p->lock);  //DOC: sleeplock1
+    acquire(&p->lock);  //DOC: sleeplock
     release(lk);
   }
 

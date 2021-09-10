@@ -67,7 +67,18 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if(r_scause()==13 || r_scause()==15) {
+
+    uint64 va = r_stval();
+    if(va>=MAXVA || (va<=PGROUNDDOWN(p->trapframe->sp) && va>=PGROUNDDOWN(p->trapframe->sp)-PGSIZE)) exit(-1);
+    va=PGROUNDDOWN(va);
+
+//    printf("cow page usertrap\n");
+    if (cow_page(p->pagetable, va, 1) < 0){
+      p->killed = 1;
+    }
+
+  }else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -137,6 +148,8 @@ kerneltrap()
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+
+//  printf("kernel trap ???\n");
   
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
