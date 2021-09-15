@@ -46,7 +46,7 @@ binit(void)
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
     b->next = bcache.head.next;
     b->prev = &bcache.head;
-    initsleeplock(&b->lock, "buffer");
+    initsleeplock(&b->lock, "buffer"); //every buffer has a sleeplock
     bcache.head.next->prev = b;
     bcache.head.next = b;
   }
