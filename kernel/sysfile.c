@@ -484,3 +484,27 @@ sys_pipe(void)
   }
   return 0;
 }
+
+
+uint64
+sys_mmap(void)
+{
+  int length, prot, flags, fd;
+  if(argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argint(4, &fd) < 0)
+    return -1;
+  printf("success %d %d %d %d\n", length, prot, flags, fd);
+  return 0;
+}
+
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+  printf("%d\n", length);
+  return 0;
+}
