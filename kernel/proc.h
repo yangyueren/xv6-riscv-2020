@@ -80,6 +80,24 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+
+
+#define VMA_SIZE 16
+struct vma
+{
+  uint64 addr;
+  int length; 
+  int prot; // PROT_READ or PROT_WRITE or both
+  int flag; //flags will be either MAP_SHARED, meaning that modifications to the mapped memory 
+            //should be written back to the file, or MAP_PRIVATE, meaning that they should not. 
+  int offset;
+  struct file* file;
+  struct vma* next;
+  struct vma* prev;
+};
+
+
+
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -103,4 +121,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma* vmalist;
 };
+
+

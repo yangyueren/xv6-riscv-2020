@@ -392,8 +392,21 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    // if(pa0 == 0)
+    //   return -1;
+    if(pa0 == 0){
+      if (srcva >= myproc()->sz){
+        return -1;
+      }
+      char* mem = kalloc();
+      if(mem == 0) return -1;
+      memset(mem, 0, PGSIZE);
+      if(mappages(pagetable, va0, PGSIZE, (uint64)mem, PTE_U | PTE_W | PTE_R | PTE_X) != 0){
+        kfree(mem);
+        return -1;
+      }
+      pa0 = (uint64)mem;
+    }
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;

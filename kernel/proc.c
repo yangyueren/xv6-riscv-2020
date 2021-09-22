@@ -5,6 +5,11 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
+
 
 struct cpu cpus[NCPU];
 
@@ -20,7 +25,7 @@ static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
-
+extern struct vma vmas[VMA_SIZE];
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -302,6 +307,22 @@ fork(void)
 
   np->state = RUNNABLE;
 
+  struct vma *vma, *nvma;
+  for(vma = p->vmalist; vma; vma = vma->next){
+    for(nvma = vmas; nvma < vmas + VMA_SIZE; nvma++){
+      if(!nvma->file){
+        break;
+      }
+    }
+    filedup(vma->file);
+    memmove(nvma, vma, sizeof(struct vma));
+    nvma->next = p->vmalist;
+    if(nvma->next){
+      nvma->next->prev = nvma;
+    }
+    p->vmalist = nvma;
+  }
+
   release(&np->lock);
 
   return pid;
@@ -343,6 +364,21 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  struct vma* vma, *vma_next;
+  for(vma=p->vmalist; vma; ){
+    if(vma->flag == MAP_SHARED){
+      vma->file->off = vma->offset;
+      filewrite(vma->file, vma->addr, vma->length);
+    }
+    uvmunmap(p->pagetable, vma->addr, PGROUNDUP(vma->length) / PGSIZE, 1);
+    
+    fileclose(vma->file);
+    vma_next = vma->next;
+    memset(vma, 0, sizeof(struct vma));
+    vma = vma_next;
+  }
+  
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

@@ -485,15 +485,47 @@ sys_pipe(void)
   return 0;
 }
 
+struct vma vmas[VMA_SIZE];
 
 uint64
 sys_mmap(void)
 {
-  int length, prot, flags, fd;
-  if(argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argint(4, &fd) < 0)
+  int length, prot, flags, offset;
+  struct file* f;
+  if(argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0 || argint(5, &offset) < 0)
     return -1;
-  printf("success %d %d %d %d\n", length, prot, flags, fd);
-  return 0;
+  // printf("success %d %d %d %d %d\n", length, prot, flags, f, offset);
+  if((f->writable == 0) && (prot & PROT_WRITE) && (flags == MAP_SHARED)){
+    return -1;
+  }
+
+  struct proc* p = myproc();
+  struct vma* vma;
+  uint64 addr = p->sz;
+  p->sz += length;
+  for(vma = vmas; vma < vmas + VMA_SIZE; vma++){
+    if(!(vma->file)){
+      break;
+    }
+  }
+  if(vma){
+    filedup(f);
+    vma->file = f;
+    vma->addr = addr;
+    vma->flag = flags;
+    vma->prot = prot;
+    vma->offset = 0;
+    vma->length = length;
+    vma->next = p->vmalist;
+    p->vmalist = vma;
+    if(vma->next){
+      vma->next->prev = vma;
+    }
+  }else{
+    return -1;
+  }
+  
+  return addr;
 }
 
 
@@ -502,9 +534,50 @@ sys_munmap(void)
 {
   uint64 addr;
   int length;
+  struct file* f;
+  struct vma* vma;
+  struct proc* p = myproc();
 
   if(argaddr(0, &addr) < 0 || argint(1, &length) < 0)
     return -1;
-  printf("%d\n", length);
+  // printf("mummap %x %d\n", addr, length);
+  
+  
+  for(vma = vmas; vma < vmas + VMA_SIZE; vma++){
+    if(vma->addr <= addr && addr < vma->addr + vma->length){
+      break;
+    }
+  }
+  if(!vma){
+    return -1;
+  }
+
+  f = vma->file;
+  int offset = addr - vma->addr + vma->offset;
+  if(vma->flag == MAP_SHARED){
+    f->off = offset;
+    filewrite(f, addr, length);
+  }
+  uvmunmap(p->pagetable, addr, PGROUNDUP(length) / PGSIZE, 1);
+  if(vma->length == length){
+    fileclose(f);
+    if(vma->prev){
+      vma->prev->next = vma->next;
+    }else{
+      p->vmalist = vma->next;
+    }
+    if(vma->next){
+      vma->next->prev = vma->prev;
+    }
+    memset(vma, 0, sizeof(struct vma));
+  }else{
+    vma->addr = addr + length;
+    vma->offset += length;
+    vma->length -= length;
+  }
+  
+  
+
+
   return 0;
 }

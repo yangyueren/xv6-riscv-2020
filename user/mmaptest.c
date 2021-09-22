@@ -114,6 +114,7 @@ mmap_test(void)
   if (p == MAP_FAILED)
     err("mmap (1)");
   _v1(p);
+  printf("munmap p at %x\n", p);
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (1)");
 
@@ -125,6 +126,7 @@ mmap_test(void)
   p = mmap(0, PGSIZE*2, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
   if (p == MAP_FAILED)
     err("mmap (2)");
+  printf("-----\n");
   if (close(fd) == -1)
     err("close");
   _v1(p);
@@ -271,6 +273,8 @@ fork_test(void)
   // read just 2nd page.
   if(*(p1+PGSIZE) != 'A')
     err("fork mismatch (1)");
+  _v1(p1);
+  // printf("below is fork\n");
 
   if((pid = fork()) < 0)
     err("fork");

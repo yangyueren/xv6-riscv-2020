@@ -5,11 +5,17 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+
 
 struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -70,16 +76,48 @@ usertrap(void)
     if(stval >= p->sz || PGROUNDUP(stval) == PGROUNDDOWN(p->trapframe->sp)){
       p->killed = 1;
     }else{
-      char *page = kalloc();
-      if(page == 0){
-        p->killed = 1;
-      }else{
-        memset(page, 0, PGSIZE);
-        if(mappages(p->pagetable, PGROUNDDOWN(stval), PGSIZE, (uint64)page, PTE_R | PTE_X | PTE_W | PTE_U) != 0){
-          kfree(page);
-          p->killed = 1; 
+
+      struct vma* vma;
+      for(vma = p->vmalist; vma != 0; vma = vma->next){
+        if(stval >= vma->addr && stval < vma->addr + vma->length){
+          break;
         }
       }
+      if(vma){
+        struct file* f = vma->file;
+        uint64 pg = PGROUNDDOWN(stval);
+        uint64 offset = pg - vma->addr;
+        char* page = kalloc();
+        if(page == 0){
+          p->killed = 1;
+        }else{
+          memset(page, 0, PGSIZE);
+          ilock(f->ip);
+          readi(f->ip, 0, (uint64)page, offset, PGSIZE);
+          iunlock(f->ip);
+          int flag = PTE_U;
+          if(vma->prot & PROT_READ) flag = flag | PTE_R;
+          if(vma->prot & PROT_WRITE) flag = flag | PTE_W;
+          if(vma->prot & PROT_EXEC) flag = flag | PTE_X;
+          if(mappages(p->pagetable, pg, PGSIZE, (uint64)page, flag) != 0){
+            kfree(page);
+            p->killed = 1;
+          }
+        }
+      }else{
+        char *page = kalloc();
+        if(page == 0){
+          p->killed = 1;
+        }else{
+          memset(page, 0, PGSIZE);
+          if(mappages(p->pagetable, PGROUNDDOWN(stval), PGSIZE, (uint64)page, PTE_R | PTE_X | PTE_W | PTE_U) != 0){
+            kfree(page);
+            p->killed = 1; 
+          }
+        }
+      }
+
+      
     }
 
 
